@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-go get -u github.com/albertogviana/prometheus-middleware
+go get -u github.com/spl0i7/prometheus-middleware
 ```
 
 ## What you will get
@@ -51,7 +51,7 @@ http_requests_total{code="200",method="get",path="/metrics"} 2
 - Gorilla/Mux
 
 ```go
-middleware := NewPrometheusMiddleware(Opts{})
+middleware := NewPrometheusMiddleware(Opts{Subsystem: "sminem"})
 
 r := mux.NewRouter()
 r.Handle("/metrics", promhttp.Handler())
