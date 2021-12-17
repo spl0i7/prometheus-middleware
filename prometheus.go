@@ -24,6 +24,8 @@ const (
 type Opts struct {
 	// Buckets specifies an custom buckets to be used in request histograpm.
 	Buckets []float64
+	// Subsystem systems have sub-parts that should also be monitored.
+	Subsystem string
 }
 
 // PrometheusMiddleware specifies the metrics that is going to be generated
@@ -36,11 +38,17 @@ type PrometheusMiddleware struct {
 func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 	var prometheusMiddleware PrometheusMiddleware
 
+	counterOpts := prometheus.CounterOpts{
+		Name: requestName,
+		Help: "How many HTTP requests processed, partitioned by status code, method and HTTP path.",
+	}
+
+	if len(opts.Subsystem) > 0 {
+		counterOpts.Subsystem = opts.Subsystem
+	}
+
 	prometheusMiddleware.request = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: requestName,
-			Help: "How many HTTP requests processed, partitioned by status code, method and HTTP path.",
-		},
+		counterOpts,
 		[]string{"code", "method", "path"},
 	)
 
@@ -53,11 +61,17 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 		buckets = dflBuckets
 	}
 
-	prometheusMiddleware.latency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	histogramOpts := prometheus.HistogramOpts{
 		Name:    latencyName,
 		Help:    "How long it took to process the request, partitioned by status code, method and HTTP path.",
 		Buckets: buckets,
-	},
+	}
+
+	if len(opts.Subsystem) > 0 {
+		histogramOpts.Subsystem = opts.Subsystem
+	}
+	prometheusMiddleware.latency = prometheus.NewHistogramVec(
+		histogramOpts,
 		[]string{"code", "method", "path"},
 	)
 
