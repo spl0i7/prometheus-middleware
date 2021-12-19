@@ -16,8 +16,10 @@ var (
 )
 
 const (
-	requestName = "http_requests_total"
-	latencyName = "http_request_duration_seconds"
+	requestName      = "http_requests_total"
+	latencyName      = "http_request_duration_seconds"
+	responseSizeName = "response_size_bytes"
+	requestSizeName  = "request_size_bytes"
 )
 
 // Opts specifies options how to create new PrometheusMiddleware.
@@ -32,6 +34,8 @@ type Opts struct {
 type PrometheusMiddleware struct {
 	request *prometheus.CounterVec
 	latency *prometheus.HistogramVec
+	reqSize *prometheus.HistogramVec
+	resSize *prometheus.HistogramVec
 }
 
 // NewPrometheusMiddleware creates a new PrometheusMiddleware instance
@@ -39,14 +43,10 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 	var prometheusMiddleware PrometheusMiddleware
 
 	counterOpts := prometheus.CounterOpts{
-		Name: requestName,
-		Help: "How many HTTP requests processed, partitioned by status code, method and HTTP path.",
+		Name:      requestName,
+		Help:      "How many HTTP requests processed, partitioned by status code, method and HTTP path.",
+		Subsystem: opts.Subsystem,
 	}
-
-	if len(opts.Subsystem) > 0 {
-		counterOpts.Subsystem = opts.Subsystem
-	}
-
 	prometheusMiddleware.request = prometheus.NewCounterVec(
 		counterOpts,
 		[]string{"code", "method", "path"},
@@ -62,13 +62,10 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 	}
 
 	histogramOpts := prometheus.HistogramOpts{
-		Name:    latencyName,
-		Help:    "How long it took to process the request, partitioned by status code, method and HTTP path.",
-		Buckets: buckets,
-	}
-
-	if len(opts.Subsystem) > 0 {
-		histogramOpts.Subsystem = opts.Subsystem
+		Name:      latencyName,
+		Help:      "How long it took to process the request, partitioned by status code, method and HTTP path.",
+		Buckets:   buckets,
+		Subsystem: opts.Subsystem,
 	}
 	prometheusMiddleware.latency = prometheus.NewHistogramVec(
 		histogramOpts,
@@ -77,6 +74,34 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 
 	if err := prometheus.Register(prometheusMiddleware.latency); err != nil {
 		log.Println("prometheusMiddleware.latency was not registered:", err)
+	}
+
+	reqSizeOpts := prometheus.HistogramOpts{
+		Name:    requestSizeName,
+		Help:    "How large was the request, partitioned by status code, method and HTTP path.",
+		Buckets: buckets,
+	}
+	prometheusMiddleware.reqSize = prometheus.NewHistogramVec(
+		reqSizeOpts,
+		[]string{"code", "method", "path"},
+	)
+
+	if err := prometheus.Register(prometheusMiddleware.reqSize); err != nil {
+		log.Println("prometheusMiddleware.reqSize was not registered:", err)
+	}
+
+	resSizeOpts := prometheus.HistogramOpts{
+		Name:    responseSizeName,
+		Help:    "How large was the response, partitioned by status code, method and HTTP path.",
+		Buckets: buckets,
+	}
+	prometheusMiddleware.resSize = prometheus.NewHistogramVec(
+		resSizeOpts,
+		[]string{"code", "method", "path"},
+	)
+
+	if err := prometheus.Register(prometheusMiddleware.resSize); err != nil {
+		log.Println("prometheusMiddleware.resSize was not registered:", err)
 	}
 
 	return &prometheusMiddleware
@@ -100,17 +125,29 @@ func (p *PrometheusMiddleware) InstrumentHandlerDuration(next http.Handler) http
 		code := sanitizeCode(delegate.status)
 		method := sanitizeMethod(r.Method)
 
-		go p.request.WithLabelValues(
+		p.request.WithLabelValues(
 			code,
 			method,
 			path,
 		).Inc()
 
-		go p.latency.WithLabelValues(
+		p.latency.WithLabelValues(
 			code,
 			method,
 			path,
 		).Observe(float64(time.Since(begin)) / float64(time.Second))
+
+		p.reqSize.WithLabelValues(
+			code,
+			method,
+			path,
+		).Observe(float64(computeApproximateRequestSize(r)))
+
+		p.resSize.WithLabelValues(
+			code,
+			method,
+			path,
+		).Observe(float64(delegate.written))
 	})
 }
 
@@ -142,4 +179,28 @@ func sanitizeMethod(m string) string {
 
 func sanitizeCode(s int) string {
 	return strconv.Itoa(s)
+}
+
+func computeApproximateRequestSize(r *http.Request) int {
+	s := 0
+	if r.URL != nil {
+		s = len(r.URL.Path)
+	}
+
+	s += len(r.Method)
+	s += len(r.Proto)
+	for name, values := range r.Header {
+		s += len(name)
+		for _, value := range values {
+			s += len(value)
+		}
+	}
+	s += len(r.Host)
+
+	// N.B. r.Form and r.MultipartForm are assumed to be included in r.URL.
+
+	if r.ContentLength != -1 {
+		s += int(r.ContentLength)
+	}
+	return s
 }

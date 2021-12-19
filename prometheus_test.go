@@ -46,4 +46,10 @@ func Test_InstrumentGorillaMux(t *testing.T) {
 	if !strings.Contains(body, latencyName) {
 		t.Errorf("body does not contain request duration entry '%s'", requestName)
 	}
+	if !strings.Contains(body, requestSizeName) {
+		t.Errorf("body does not contain request duration entry '%s'", requestSizeName)
+	}
+	if !strings.Contains(body, responseSizeName) {
+		t.Errorf("body does not contain request duration entry '%s'", responseSizeName)
+	}
 }
