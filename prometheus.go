@@ -79,7 +79,7 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 	reqSizeOpts := prometheus.HistogramOpts{
 		Name:    requestSizeName,
 		Help:    "How large was the request, partitioned by status code, method and HTTP path.",
-		Buckets: buckets,
+		Buckets: []float64{100, 1000, 5000, 20000, 50000},
 	}
 	prometheusMiddleware.reqSize = prometheus.NewHistogramVec(
 		reqSizeOpts,
@@ -93,7 +93,7 @@ func NewPrometheusMiddleware(opts Opts) *PrometheusMiddleware {
 	resSizeOpts := prometheus.HistogramOpts{
 		Name:    responseSizeName,
 		Help:    "How large was the response, partitioned by status code, method and HTTP path.",
-		Buckets: buckets,
+		Buckets: []float64{100, 1000, 5000, 20000, 50000},
 	}
 	prometheusMiddleware.resSize = prometheus.NewHistogramVec(
 		resSizeOpts,
